@@ -6,57 +6,72 @@
 }(function() {
 
 	var NightsWatch = function() {
-		var thresholds = {
+		this.thresholds = {
 			too_many_watches: 50,
 			warned: []
 		};
-		var stats = {
+		this.stats = {
 			total_watches: 0,
 			watches_by_element: {},
 		};
+	};
 
-		$('.ng-scope').each(function(n, elem) {
+	NightsWatch.prototype.getDom = function() {
+		return $('.ng-scope');
+	};
+
+	NightsWatch.prototype.exceedsThreshold = function(key) {
+		var exceeds = this.thresholds.warned.indexOf(key) === -1 
+			&& this.stats.watches_by_element[key] >= this.thresholds.too_many_watches;
+		if (exceeds)
+			this.thresholds.warned.push(key);
+		return exceeds;
+	};
+
+	NightsWatch.prototype.analyzeExpressions = function($watchers) {
+		var expressions = [];
+		angular.forEach($watchers, function(w) {
+			if (typeof w.exp === 'function')
+				return expressions.push([w.exp.toString(), 'see:', w.last]); // this could be minified :/
+			return expressions.push(w.exp);
+		});
+		return expressions;
+	};
+
+	NightsWatch.prototype.scanEach = function() {
+		var self = this;
+		this.getDom().each(function(n, elem) {
 			var $elem = $(elem);
 			var $scope = $elem.scope();
 			var $watchers = $scope.$$watchers;
 
-			if ($watchers) {
-				var watchers_len = $watchers.length;
-				stats.watches_by_element[elem.nodeName] = stats.watches_by_element[elem.nodeName] || 0;
-				stats.total_watches += watchers_len;
-				stats.watches_by_element[elem.nodeName] += watchers_len;
+			if (!$watchers)
+				return true;
 
-				//console.log(stats.watches_by_element[elem.nodeName]);
+			var watchers_len = $watchers.length;
+			self.stats.watches_by_element[elem.nodeName] = self.stats.watches_by_element[elem.nodeName] || 0;
+			self.stats.total_watches += watchers_len;
+			self.stats.watches_by_element[elem.nodeName] += watchers_len;
 
-				if (thresholds.warned.indexOf(elem.nodeName) === -1 && stats.watches_by_element[elem.nodeName] >= thresholds.too_many_watches)  {
-					thresholds.warned.push(elem.nodeName);
-					var expressions = [];
-					angular.forEach($watchers, function(w) {
-						if (typeof w.exp === 'function')
-							expressions.push([w.exp.toString(), 'see:', w.last]);
-						else
-							expressions.push(w.exp);
-					});
-					console.log('Threshold Exceeded:', elem.nodeName, $scope, stats.watches_by_element[elem.nodeName]);
-					console.log('In this scope:', watchers_len, $watchers);
-					console.log('Expressions:', expressions);
-					console.log('This Sample $scope', $elem);
-				}
-			}  
+			if (!self.exceedsThreshold(elem.nodeName))	
+				return true;
+			
+			console.log("Threshold Exceeded:", elem.nodeName, $scope, self.stats.watches_by_element[elem.nodeName]);
+			console.log("Sample for this scope:", watchers_len, $watchers, $elem);
+			console.log("Expressions for this scope's $watchers:", self.analyzeExpressions($watchers));
 		});
 
-		console.log('Total Watches:', stats.total_watches);
+		console.log('Total Watches:', this.stats.total_watches);
 		console.log('Breakdown by nodeName:');
-
-		for (var name in stats.watches_by_element)
-			console.log(name, stats.watches_by_element[name]);
-	
+		for (var name in this.stats.watches_by_element)
+			console.log(name, this.stats.watches_by_element[name]);
 	};
 
-	new NightsWatch();
+	window.nwScan = function() {
+		new NightsWatch().scanEach();
+	};
 
-	setTimeout(function() {
-		new NightsWatch();
-	}, 10000);
+	// initial check, call it from console whenever you want!
+	window.nwScan();
 
 }));
